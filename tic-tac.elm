@@ -2,10 +2,10 @@ module Main where
 
 import Window
 import Array as A
+import Random as R
 import Graphics.Input (..)
 
 type GameState = {
-  temp: Int,
   ind : Int,
   dim : (Int, Int),
   emptyElem : Int -> Element,
@@ -15,7 +15,6 @@ type GameState = {
 
 initState : GameState
 initState = {
-  temp = 999,
   ind = 1,
   dim = (500,500),
   emptyElem = clickableElem,
@@ -29,19 +28,54 @@ type Index = Int
 clickInput : Input Index
 clickInput = input -1
 
-main = scaleSpace <~ Window.dimensions
-                   ~ foldp step initState clickInput.signal 
+main = scaleSpace 
+          <~ Window.dimensions
+           ~ (foldp step initState 
+                <| lift2 (,) clickInput.signal <|
+                             R.range 0 8 (clickInput.signal))
 
-step : Int -> GameState -> GameState
-step n st =
+step : (Int, Int) -> GameState -> GameState
+step (n, rnd) st =
   let newSt = {st | board <- A.set n st.ind st.board,
-                    temp <- n,
                     ind <- st.ind * -1} in
   let blankElem _ = spacer 100 100 in
   case hasWon newSt.board st.ind of
   Just winner -> {newSt | emptyElem <- blankElem, winningLine <- Just winner}
-  _ -> newSt
+  _ -> playAIIfNeeded newSt rnd
 
+possibleMoves : A.Array Int -> [Int]
+possibleMoves lst =
+   let unUsedFn = (\(ind, val) -> if val == 0 then True else False) in
+   map fst <| filter unUsedFn <| A.toIndexedList lst
+
+aiLevel1 : A.Array Int -> [Int] -> Int -> Int
+aiLevel1 brd mvs rnd =
+  let id = rem rnd <| length mvs in
+  let movesA = A.fromList mvs in
+  A.getOrFail id movesA
+
+aiLevel2 : A.Array Int -> [Int] -> Int -> Int
+aiLevel2 brd mvs rnd =
+  let winFn pl x = if isJust (hasWon (A.set x pl brd) pl)
+                   then Just x
+                   else Nothing  in
+  let fn pl =  justs <| map (winFn pl) mvs in
+  let wins = fn -1 in
+  let stopLoss = fn 1 in
+  case isEmpty wins of
+    False -> head wins
+    _ -> case isEmpty stopLoss of
+           False -> head stopLoss
+           _ -> aiLevel1 brd mvs rnd
+
+playAIIfNeeded st rnd =
+ let brd = st.board in
+ let pMoves = possibleMoves brd in
+ case st.ind of
+  -1 -> case isEmpty pMoves of
+      False -> step (aiLevel2 brd pMoves rnd, rnd) st
+      _ -> st
+  _ -> st 
 
 linePath = segment (-150,0) (150,0)
 lineForm = traced defaultLine linePath

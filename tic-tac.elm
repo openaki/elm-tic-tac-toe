@@ -4,6 +4,7 @@ import Window
 import Array as A
 import Random as R
 import Graphics.Input (..)
+import Maybe (isJust)
 
 type GameState = {
   ind : Int,
@@ -59,7 +60,7 @@ aiLevel2 brd mvs rnd =
   let winFn pl x = if isJust (hasWon (A.set x pl brd) pl)
                    then Just x
                    else Nothing  in
-  let fn pl =  justs <| map (winFn pl) mvs in
+  let fn pl =  filterMap identity <| map (winFn pl) mvs in
   let wins = fn -1 in
   let stopLoss = fn 1 in
   case isEmpty wins of
